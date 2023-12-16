@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
-  SQLX_VERSION: 0.7.1
+  SQLX_VERSION: 0.7.3
   SQLX_FEATURES: "rustls,postgres"
   DATABASE_URL: "postgres://${{ secrets.DATABASE_USER }}:${{ secrets.DATABASE_PASSWORD }}@localhost:5432/${{ vars.DATABASE_NAME }}"
 
