@@ -25,23 +25,46 @@ DB_HOST=${POSTGRES_HOST:=localhost}
 # Allow to skip Docker if a dockerized database is already running
 if [[ -z "$SKIP_DOCKER" ]]
 then
+  RUNNING_POSTGRES_CONTAINER=$(docker ps --filter 'name=postgres' --format '{{.ID}}')
+  if [[ -n  $RUNNING_POSTGRES_CONTAINER ]]; then
+    >&2 echo "Docker container with postgres is already running"
+    exit 1
+  fi
   #Lauch posgres using Docker
   docker run \
     -e POSTGRES_USER=${DB_USER} \
     -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
     -e POSTGRES_DB=${POSTGRES_DB} \
     -p "${DB_PORT}":5432 \
-    -d postgres \
+    -d \
+    --name "postgres_$(date '+%s')" \
     postgres -N 1000
 fi
 
 # Keep pinging Postgres until it's ready to accept commands
-until nc -zv $DB_HOST $DB_PORT; do
-  >&2 echo "Postgres is still unavailable - sleeping"
-  sleep 3
+test_connection="nc -zv $DB_HOST $DB_PORT"
+
+# Number of attempts
+attempts=5
+
+# Loop to try the command multiple times
+for ((i=1; i<=$attempts; i++)); do
+    echo "Attempt $i:"
+    $test_connection
+
+    # Check the exit status of the command
+    if [ $? -eq 0 ]; then
+       >&2 echo "Command executed successfully."
+       >&2 echo "Postgres is up and running on port ${DB_PORT}!"
+        break  # Exit the loop if the command succeeds
+    else
+        echo "Command failed. Retrying..."
+    fi
+
+    # Add a delay between attempts (optional)
+    sleep 3
 done
 
->&2 echo "Postgres is up and running on port ${DB_PORT}!"
 
 DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
 export DATABASE_URL
