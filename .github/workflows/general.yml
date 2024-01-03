@@ -43,10 +43,10 @@ jobs:
           --no-default-features
           --locked
       
-      # - name: Migrate database
-      #   run: |
-      #     sudo apt-get install libpq-dev -y
-      #     SKIP_DOCKER=true ./scripts/init_db.sh
+      - name: Migrate database
+        run: |
+          sudo apt-get install libpq-dev -y
+          SKIP_DOCKER=true ./scripts/init_db.sh
 
       - name: Run tests
         run: cargo test
