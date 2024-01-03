@@ -1,60 +1,30 @@
 use std::net::TcpListener;
 
-use sqlx::{Connection, Executor, PgConnection, PgPool};
-use uuid::Uuid;
-use zero2prod::{
-    configuration::{get_configuration, DatabaseSettings},
-    startup::run,
-};
+use sqlx::{PgPool, Pool, Postgres};
+use zero2prod::startup::run;
 
 pub struct TestApp {
     pub address: String,
-    pub db_name: String,
     pub db_pool: PgPool,
 }
 
-pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
-    let mut connection = PgConnection::connect(&config.connection_string_without_db())
-        .await
-        .expect("Failed to connect to Postgres.");
-    connection
-        .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
-        .await
-        .expect("Failed to create database");
-
-    let connection_pool = PgPool::connect(&config.connection_string())
-        .await
-        .expect("Failed to connect to Postgres.");
-    sqlx::migrate!("./migrations")
-        .run(&connection_pool)
-        .await
-        .expect("Failed to migrate the database.");
-
-    connection_pool
-}
-
-async fn spawn_app() -> TestApp {
+async fn spawn_app(pool: Pool<Postgres>) -> TestApp {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port.");
     let port = listener.local_addr().unwrap().port();
     let address = format!("http://127.0.0.1:{}", port);
 
-    let mut configuration = get_configuration().expect("Failed to read configuration.");
-    configuration.database.database_name = Uuid::new_v4().to_string();
-
-    let connection_pool = configure_database(&configuration.database).await;
-    let server = run(listener, connection_pool.clone()).expect("Failed to bind address.");
+    let server = run(listener, pool.clone()).expect("Failed to bind address.");
     let _ = tokio::spawn(server);
 
     TestApp {
         address,
-        db_name: configuration.database.database_name,
-        db_pool: connection_pool,
+        db_pool: pool,
     }
 }
 
 #[sqlx::test]
-async fn health_check_works() {
-    let app = spawn_app().await;
+async fn health_check_works(pool: Pool<Postgres>) {
+    let app = spawn_app(pool).await;
     let client = reqwest::Client::new();
 
     let response = client
@@ -68,8 +38,8 @@ async fn health_check_works() {
 }
 
 #[sqlx::test]
-async fn subscribe_returns_a_200_for_valid_form_data() {
-    let app = spawn_app().await;
+async fn subscribe_returns_a_200_for_valid_form_data(pool: Pool<Postgres>) {
+    let app = spawn_app(pool).await;
     let client = reqwest::Client::new();
 
     let body = "name=engineer%20rust&email=engineer_rust%40gmail.com";
@@ -93,8 +63,8 @@ async fn subscribe_returns_a_200_for_valid_form_data() {
 }
 
 #[sqlx::test]
-async fn subscribe_returns_a_400_when_data_is_missing() {
-    let app = spawn_app().await;
+async fn subscribe_returns_a_400_when_data_is_missing(pool: Pool<Postgres>) {
+    let app = spawn_app(pool).await;
     let client = reqwest::Client::new();
     let test_cases = vec![
         ("name=engineer%20rust", "missing the email"),
